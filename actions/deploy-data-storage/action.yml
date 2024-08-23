@@ -1,0 +1,60 @@
+name: Deploy Storage for Data
+inputs:
+  ARM_CLIENT_ID:
+    description: "Application ID"
+    required: true
+  ARM_CLIENT_SECRET:
+    description: "Application ID"
+    required: true
+  ARM_SUBSCRIPTION_ID:
+    description: "Application ID"
+    required: true
+  ARM_TENANT_ID:
+    description: "Application ID"
+    required: true
+  DEPLOYMENT_SA_NAME:
+    description: "Storage account name for data files"
+    required: true
+  DEPLOYMENT_CONTAINER_NAME:
+    description: "Storage Container name"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code 
+      uses: actions/checkout@v3
+
+    - name: Change to deploy storage directory
+      working-directory: ./examples/sequential/data_storage
+      run: echo "Changed directory to opinionated-terraform-azurerm-hpcc/examples/sequential/data_storage"
+      shell: bash
+
+    - name: Copy misc.auto.tfvars.example
+      working-directory: ./examples/sequential/data_storage
+      run: cp misc.auto.tfvars.example misc.auto.tfvars
+      shell: bash
+
+    - name: Initialize and Apply Terraform
+      working-directory: ./examples/sequential/data_storage
+      run: |
+          terraform init
+          terraform apply -auto-approve
+      shell: bash
+      env:
+        ARM_CLIENT_ID: ${{ inputs.ARM_CLIENT_ID }}
+        ARM_CLIENT_SECRET: ${{ inputs.ARM_CLIENT_SECRET }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.ARM_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ inputs.ARM_TENANT_ID }}
+        storage_account_name: ${{ inputs.DEPLOYMENT_SA_NAME}}
+        storage_container_name: ${{ inputs.DEPLOYMENT_CONTAINER_NAME }}
+
+    # - name: Apply Terraform configuration
+    #   working-directory: ./examples/sequential/vnet
+    #   run: terraform apply -auto-approve
+    #   shell: bash
+    #   env:
+    #     ARM_CLIENT_ID: ${{ inputs.ARM_CLIENT_ID }}
+    #     ARM_CLIENT_SECRET: ${{ inputs.ARM_CLIENT_SECRET }}
+    #     ARM_SUBSCRIPTION_ID: ${{ inputs.ARM_SUBSCRIPTION_ID }}
+    #     ARM_TENANT_ID: ${{ inputs.ARM_TENANT_ID }}

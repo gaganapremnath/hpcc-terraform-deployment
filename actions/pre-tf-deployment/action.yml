@@ -1,0 +1,76 @@
+name: Create deployment storage account
+inputs:
+  DPL_SA_NAME:
+    description: "Storage Account Name"
+    required: true
+  DPL_STORAGE_RG_NAME:
+    description: "Resource Group Name"
+    required: true
+  STORAGE_DPL_CTNR_NAME:
+    description: "Storage Deployment Container Name"
+    required: true
+  VNET_DPL_CTNR_NAME: 
+    description: "VNet Deployment Container Name"
+    required: true
+  AKS_DPL_CTNR_NAME: 
+    description: "VNet Deployment Container Name"
+    required: true
+  HPCC_DPL_CTNR_NAME: 
+    description: "HPCC Deployment Container Name"
+    required: true
+  DPL_SA_LOCATION:
+    description: "Storage Account Location"
+    required: true
+  TAGS: 
+    description: "Tags"
+    required: true
+  PUBLIC_IP: 
+    description: "Runner Public IP"
+    required: true
+  
+runs:
+  using: "composite"
+  steps:
+    - name: Create resource group
+      run: |
+        exists=$(az group exists --name ${{inputs.DPL_STORAGE_RG_NAME}})
+        if ! [ "$exists" == "true" ]; then
+          echo "Resource group ${{inputs.DPL_STORAGE_RG_NAME}} exists."
+        else
+          az group create --name ${{ inputs.DPL_STORAGE_RG_NAME }} --location ${{inputs.DPL_SA_LOCATION}} \
+            --tags ${{inputs.TAGS}}
+        fi
+      shell: bash
+    
+    - name: Create storage account
+      run: |
+        exists=$(az storage account check-name --name ${{inputs.DPL_SA_NAME}} --query 'nameAvailable')
+        if ! [ "$exists" == "true" ]; then
+          echo "The storage account '${{inputs.DPL_SA_NAME}}' exists."
+        else
+          az storage account create --name ${{ inputs.DPL_SA_NAME }} \
+            --resource-group ${{ inputs.DPL_STORAGE_RG_NAME }} --location ${{inputs.DPL_SA_LOCATION}} \
+            --sku Standard_LRS --tags ${{inputs.TAGS}} --public-network-access Disabled
+        fi
+      shell: bash
+
+    - name: Create storage containers
+      run: |
+        for container in ${{ inputs.STORAGE_DPL_CTNR_NAME }} ${{ inputs.VNET_DPL_CTNR_NAME }} ${{ inputs.AKS_DPL_CTNR_NAME }} ${{ inputs.HPCC_DPL_CTNR_NAME }}; do
+          exists=$(az storage container exists --name $container --account-name ${{inputs.DPL_SA_NAME}})
+          if [ "$exists" == "true" ]; then
+            echo "The container '$container' exists in storage account '${{inputs.DPL_SA_NAME}}'."
+          else
+            az storage container create --name $container --account-name ${{ inputs.DPL_SA_NAME }} \
+              --auth-mode login --public-access off
+          fi
+        done
+      shell: bash
+
+    - name: Add runner's public IP to the storage account network rules
+      run: |
+          az storage account network-rule add \
+            --account-name ${{ inputs.DPL_SA_NAME }} \
+            --resource-group ${{ inputs.DPL_STORAGE_RG_NAME }} \
+            --ip-address ${{ inputs.PUBLIC_IP }} \
+      shell: bash

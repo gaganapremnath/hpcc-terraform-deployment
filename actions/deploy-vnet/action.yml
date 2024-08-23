@@ -1,0 +1,104 @@
+name: Deploy Virtual Network Module
+inputs:
+  ARM_CLIENT_ID:
+    description: "Application ID"
+    required: true
+  ARM_CLIENT_SECRET:
+    description: "Client Secret"
+    required: true
+  ARM_SUBSCRIPTION_ID:
+    description: "Subscription ID"
+    required: true
+  ARM_TENANT_ID:
+    description: "Tenant ID"
+    required: true
+  RBAC_ENABLED: 
+    description: "Enable RBAC"
+    default: false
+  DPL_SA_NAME:
+    description: "Storage Account Name"
+    required: true
+  DPL_STORAGE_RG_NAME:
+    description: "Resource Group Name"
+    required: true
+  STATE_BLOB_NAME:
+    description: "State Blob Name"
+    required: true
+  VNET_DPL_CTNR_NAME:
+    description: "Storage Deployment Container Name"
+    required: true
+  DPL_BLOB_NAME:
+    description: "Storage Deployment Blob Name"
+    required: true
+  VNET_DPL_CTNR_SAS:
+    description: "Vnet SAS"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code 
+      uses: actions/checkout@v3
+
+    ## Install a community package that adds the azcopy tool
+    - name: Install azcopy
+      uses: kheiakiyama/install-azcopy-action@v1.0.3
+      with:
+        version: 'v10'
+
+    - name: Run Azcopy
+      working-directory: ./examples/sequential/vnet
+      run: |
+        mkdir -p ./data
+        touch ./data/config.json
+        azcopy_v10 copy "https://deploymentsa2.blob.core.windows.net/${{inputs.VNET_DPL_CTNR_NAME}}/${{inputs.DPL_BLOB_NAME}}?${{ inputs.VNET_DPL_CTNR_SAS }}" "./data/config.json" || echo "Failed to copy data. File not found."
+        ls -lart ./data
+      shell: bash
+
+    - name: Copy tfvars files from the vnet containers to local
+      working-directory: ./examples/sequential/vnet
+      run: |
+        touch misc.auto.tfvars
+        azcopy_v10 copy "https://deploymentsa2.blob.core.windows.net/${{inputs.VNET_DPL_CTNR_NAME}}/misc.auto.tfvars?${{ inputs.VNET_DPL_CTNR_SAS }}" "./misc.auto.tfvars" --recursive || echo "Failed to copy data. File not found."
+      shell: bash
+
+    - name: Export secrets and vars as environment variables if using RBAC
+      if: ${{ inputs.RBAC_ENABLED }} == true
+      working-directory: ./examples/sequential/vnet
+      run:  | 
+        export ARM_CLIENT_ID=${{ inputs.ARM_CLIENT_ID }} 
+        export ARM_CLIENT_SECRET=${{ inputs.ARM_CLIENT_SECRET }} 
+        export ARM_SUBSCRIPTION_ID=${{ inputs.ARM_SUBSCRIPTION_ID }} 
+        export ARM_TENANT_ID=${{ inputs.ARM_TENANT_ID }}
+        export ARM_USE_AZUREAD=true
+        export ARM_USE_OIDC=true
+        export TF_VAR_dpl_sa_name=${{ inputs.DPL_SA_NAME }}
+        export TF_VAR_vnet_dpl_ctnr_name=${{ inputs.VNET_DPL_CTNR_NAME }}
+        export TF_VAR_dpl_blob_name=${{ inputs.DPL_BLOB_NAME }}
+      shell: bash
+
+    - name: Initialize Terraform
+      working-directory: ./examples/sequential/vnet
+      run: terraform init -backend-config="resource_group_name=${{ inputs.DPL_STORAGE_RG_NAME }}" -backend-config="storage_account_name=${{ inputs.DPL_SA_NAME }}" -backend-config="container_name=${{ inputs.VNET_DPL_CTNR_NAME }}" -backend-config="key=${{ inputs.STATE_BLOB_NAME }}" -reconfigure
+      shell: bash
+      env:
+        ARM_CLIENT_ID: ${{ inputs.ARM_CLIENT_ID }}
+        ARM_CLIENT_SECRET: ${{ inputs.ARM_CLIENT_SECRET }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.ARM_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ inputs.ARM_TENANT_ID }}
+        TF_VAR_dpl_sa_name: ${{ inputs.DPL_SA_NAME }}
+        TF_VAR_vnet_dpl_ctnr_name: ${{ inputs.VNET_DPL_CTNR_NAME }}
+        TF_VAR_dpl_blob_name: ${{ inputs.DPL_BLOB_NAME }}
+
+    - name: Apply Terraform configuration
+      working-directory: ./examples/sequential/vnet
+      run: terraform apply -auto-approve
+      shell: bash
+      env:
+        ARM_CLIENT_ID: ${{ inputs.ARM_CLIENT_ID }}
+        ARM_CLIENT_SECRET: ${{ inputs.ARM_CLIENT_SECRET }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.ARM_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ inputs.ARM_TENANT_ID }}
+        TF_VAR_dpl_sa_name: ${{ inputs.DPL_SA_NAME }}
+        TF_VAR_vnet_dpl_ctnr_name: ${{ inputs.VNET_DPL_CTNR_NAME }}
+        TF_VAR_dpl_blob_name: ${{ inputs.DPL_BLOB_NAME }}
